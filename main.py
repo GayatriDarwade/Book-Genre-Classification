@@ -5,9 +5,9 @@ from nltk.corpus import stopwords
 import re
 import nltk
 from flask import Flask, request, render_template
+import os
 
-nltk.download('stopwords')
-nltk.download('wordnet')
+nltk.data.path.append(os.path.join(os.path.dirname(__file__), "corpora"))
 
 # cleaning the text i.e removing all unncessary characters
 
