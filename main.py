@@ -1,113 +1,77 @@
 import pickle
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords
+from nltk.corpus import stopwords, wordnet
 import re
 import nltk
 from flask import Flask, request, render_template
 import os
 
+# Add local corpora folder to NLTK path
 nltk.data.path.append(os.path.join(os.path.dirname(__file__), "corpora"))
 
-# cleaning the text i.e removing all unncessary characters
-
-
-def cleantext(text):
-
-    # removing the "\"
-    text = re.sub("'\''", "", text)
-    # removing special symbols
-    text = re.sub("[^a-zA-Z]", " ", text)
-    # removing the whitespaces
-    text = ' '.join(text.split())
-    # convert text to lowercase
-    text = text.lower()
-
-    return text
-
-# removing the stopwords
-
-
-def removestopwords(text):
+# Ensure stopwords and wordnet are accessible
+try:
     stop_words = set(stopwords.words('english'))
+except LookupError:
+    raise RuntimeError("Stopwords not found in local corpora folder!")
+
+try:
+    WordNetLemmatizer()  # Just to trigger loading wordnet
+except LookupError:
+    raise RuntimeError("WordNet not found in local corpora folder!")
+
+# Cleaning the text
+def cleantext(text):
+    text = re.sub("'\''", "", text)
+    text = re.sub("[^a-zA-Z]", " ", text)
+    text = ' '.join(text.split())
+    return text.lower()
+
+# Removing stopwords
+def removestopwords(text):
     removedstopword = [word for word in text.split() if word not in stop_words]
     return ' '.join(removedstopword)
 
-
-# lemmatizing the text
-
+# Lemmatizing
 def lemmatizing(text):
     lemma = WordNetLemmatizer()
-    stemSentence = ""
-    for word in text.split():
-        stem = lemma.lemmatize(word)
-        stemSentence += stem
-        stemSentence += " "
-    stemSentence = stemSentence.strip()
-    return stemSentence
+    return ' '.join([lemma.lemmatize(word) for word in text.split()])
 
-
-# stemming the text,i.e reducing the word size
-
+# Stemming
 def stemming(text):
-
     stemmer = PorterStemmer()
-    stemmed_sentence = ""
-    for word in text.split():
-        stem = stemmer.stem(word)
-        stemmed_sentence += stem
-        stemmed_sentence += " "
+    return ' '.join([stemmer.stem(word) for word in text.split()])
 
-    stemmed_sentence = stemmed_sentence.strip()
-    return stemmed_sentence
-
-# testing the model
-
-
+# Test model
 def test(text, model, tfidf_vectorizer):
-
     text = cleantext(text)
     text = removestopwords(text)
     text = lemmatizing(text)
     text = stemming(text)
     text_vector = tfidf_vectorizer.transform([text])
     predicted = model.predict(text_vector)
-
     newmapper = {0: 'Fantasy', 1: 'Science Fiction', 2: 'Crime Fiction',
                  3: 'Historical novel', 4: 'Horror', 5: 'Thriller'}
-
     return newmapper[predicted[0]]
 
-# training once for tfdif to fit
+# Load model and vectorizer
+with open('bookgenremodel.pkl', 'rb') as f:
+    model = pickle.load(f)
 
-
-# loading the model
-file = open('bookgenremodel.pkl', 'rb')
-model = pickle.load(file)
-file.close()
-
-file1 = open('tfdifvector.pkl', 'rb')
-tfidf_vectorizer = pickle.load(file1)
-file1.close()
-
+with open('tfdifvector.pkl', 'rb') as f:
+    tfidf_vectorizer = pickle.load(f)
 
 app = Flask(__name__)
 
-
 @app.route('/', methods=['GET', 'POST'])
 def hello_world():
-
     if request.method == 'POST':
-
-        mydict = request.form
-        text = mydict["summary"]
+        text = request.form["summary"]
         prediction = test(text, model, tfidf_vectorizer)
-
         return render_template('index.html', genre=prediction, text=str(text)[:100], showresult=True)
     return render_template('index.html')
 
-
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))  # Use Render's PORT or fallback 5000
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
