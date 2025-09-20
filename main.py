@@ -1,88 +1,86 @@
-import pickle
-import re
 import os
+import re
+import pickle
 from flask import Flask, request, render_template
 from nltk.stem import PorterStemmer, WordNetLemmatizer
-from nltk.corpus import stopwords, wordnet
-import nltk
 
-# =======================
-# NLTK Local Corpora Setup
-# =======================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# --- Paths ---
+BASE_DIR = os.path.dirname(__file__)
 CORPORA_DIR = os.path.join(BASE_DIR, "corpora")
+STOPWORDS_DIR = os.path.join(CORPORA_DIR, "stopwords")
+WORDNET_DIR = os.path.join(CORPORA_DIR, "wordnet")
 
-# Add local corpora folder to NLTK path
-if CORPORA_DIR not in nltk.data.path:
-    nltk.data.path.append(CORPORA_DIR)
+# --- Load Stopwords Manually ---
+if not os.path.exists(STOPWORDS_DIR):
+    raise RuntimeError(f"Stopwords folder not found at {STOPWORDS_DIR}")
 
-# Load stopwords
+stop_words = set()
+for file in os.listdir(STOPWORDS_DIR):
+    filepath = os.path.join(STOPWORDS_DIR, file)
+    with open(filepath, "r", encoding="utf-8") as f:
+        stop_words.update([line.strip() for line in f])
+
+# --- Configure NLTK to use Local WordNet ---
+import nltk
+nltk.data.path.append(WORDNET_DIR)
+
+# Test WordNet
 try:
-    stop_words = set(stopwords.words("english"))
+    WordNetLemmatizer()
 except LookupError:
-    raise RuntimeError(f"Stopwords not found! Check {CORPORA_DIR}/stopwords")
+    raise RuntimeError(f"WordNet not found in {WORDNET_DIR}")
 
-# Load WordNet
-try:
-    nltk.corpus.wordnet.ensure_loaded()
-except LookupError:
-    raise RuntimeError(f"WordNet not found! Check {CORPORA_DIR}/wordnet")
-
-# =======================
-# Text Preprocessing
-# =======================
+# --- Text Processing Functions ---
 def cleantext(text):
     text = re.sub("'\''", "", text)
     text = re.sub("[^a-zA-Z]", " ", text)
-    return ' '.join(text.split()).lower()
+    text = ' '.join(text.split())
+    return text.lower()
 
 def removestopwords(text):
-    return ' '.join([w for w in text.split() if w not in stop_words])
+    return ' '.join([word for word in text.split() if word not in stop_words])
 
 def lemmatizing(text):
     lemma = WordNetLemmatizer()
-    return ' '.join([lemma.lemmatize(w) for w in text.split()])
+    return ' '.join([lemma.lemmatize(word) for word in text.split()])
 
 def stemming(text):
     stemmer = PorterStemmer()
-    return ' '.join([stemmer.stem(w) for w in text.split()])
+    return ' '.join([stemmer.stem(word) for word in text.split()])
 
-# =======================
-# Model Prediction
-# =======================
+# --- Prediction Function ---
 def test(text, model, tfidf_vectorizer):
     text = cleantext(text)
     text = removestopwords(text)
     text = lemmatizing(text)
     text = stemming(text)
-    vector = tfidf_vectorizer.transform([text])
-    pred = model.predict(vector)
-    mapping = {0: 'Fantasy', 1: 'Science Fiction', 2: 'Crime Fiction',
-               3: 'Historical novel', 4: 'Horror', 5: 'Thriller'}
-    return mapping[pred[0]]
+    text_vector = tfidf_vectorizer.transform([text])
+    predicted = model.predict(text_vector)
+    newmapper = {0: 'Fantasy', 1: 'Science Fiction', 2: 'Crime Fiction',
+                 3: 'Historical novel', 4: 'Horror', 5: 'Thriller'}
+    return newmapper[predicted[0]]
 
-# =======================
-# Load Model & Vectorizer
-# =======================
-with open(os.path.join(BASE_DIR, "bookgenremodel.pkl"), "rb") as f:
+# --- Load Model and Vectorizer ---
+with open(os.path.join(BASE_DIR, 'bookgenremodel.pkl'), 'rb') as f:
     model = pickle.load(f)
 
-with open(os.path.join(BASE_DIR, "tfdifvector.pkl"), "rb") as f:
+with open(os.path.join(BASE_DIR, 'tfdifvector.pkl'), 'rb') as f:
     tfidf_vectorizer = pickle.load(f)
 
-# =======================
-# Flask App
-# =======================
+# --- Flask App ---
 app = Flask(__name__)
 
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def home():
-    if request.method == "POST":
+    if request.method == 'POST':
         text = request.form.get("summary", "")
+        if text.strip() == "":
+            return render_template('index.html', showresult=False, message="Please enter some text!")
         prediction = test(text, model, tfidf_vectorizer)
-        return render_template("index.html", genre=prediction, text=text[:100], showresult=True)
-    return render_template("index.html")
+        return render_template('index.html', genre=prediction, text=text[:100], showresult=True)
+    return render_template('index.html', showresult=False)
 
+# --- Run App ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
