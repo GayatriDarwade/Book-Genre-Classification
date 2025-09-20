@@ -3,14 +3,15 @@ import re
 import pickle
 from flask import Flask, request, render_template
 from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk.corpus.reader import WordNetCorpusReader
 
 # --- Paths ---
 BASE_DIR = os.path.dirname(__file__)
 CORPORA_DIR = os.path.join(BASE_DIR, "corpora")
 STOPWORDS_DIR = os.path.join(CORPORA_DIR, "stopwords")
-WORDNET_DIR = os.path.join(CORPORA_DIR, "wordnet")
+WORDNET_DIR = os.path.join(CORPORA_DIR, "wordnet", "wordnet")  # must point to extracted files
 
-# --- Load Stopwords Manually ---
+# --- Load Stopwords ---
 if not os.path.exists(STOPWORDS_DIR):
     raise RuntimeError(f"Stopwords folder not found at {STOPWORDS_DIR}")
 
@@ -20,15 +21,22 @@ for file in os.listdir(STOPWORDS_DIR):
     with open(filepath, "r", encoding="utf-8") as f:
         stop_words.update([line.strip() for line in f])
 
-# --- Configure NLTK to use Local WordNet ---
-import nltk
-nltk.data.path.append(WORDNET_DIR)
+# --- Load WordNet manually ---
+if not os.path.exists(WORDNET_DIR):
+    raise RuntimeError(f"WordNet folder not found at {WORDNET_DIR}")
 
-# Test WordNet
-try:
-    WordNetLemmatizer()
-except LookupError:
-    raise RuntimeError(f"WordNet not found in {WORDNET_DIR}")
+wn = WordNetCorpusReader(WORDNET_DIR, nltk.data.find('corpora/wordnet/wordnet/.*'))
+
+# Monkey patch NLTK lemmatizer to use local WordNet
+class LocalWordNetLemmatizer(WordNetLemmatizer):
+    def __init__(self, wordnet_reader):
+        super().__init__()
+        self._wordnet = wordnet_reader
+
+    def lemmatize(self, word, pos='n'):
+        return super().lemmatize(word, pos=pos)
+
+lemma = LocalWordNetLemmatizer(wn)
 
 # --- Text Processing Functions ---
 def cleantext(text):
@@ -41,7 +49,6 @@ def removestopwords(text):
     return ' '.join([word for word in text.split() if word not in stop_words])
 
 def lemmatizing(text):
-    lemma = WordNetLemmatizer()
     return ' '.join([lemma.lemmatize(word) for word in text.split()])
 
 def stemming(text):
