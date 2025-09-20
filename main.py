@@ -1,6 +1,7 @@
 import os
 import re
 import pickle
+import nltk  # Make sure to import nltk first
 from flask import Flask, request, render_template
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.corpus.reader import WordNetCorpusReader
@@ -9,7 +10,7 @@ from nltk.corpus.reader import WordNetCorpusReader
 BASE_DIR = os.path.dirname(__file__)
 CORPORA_DIR = os.path.join(BASE_DIR, "corpora")
 STOPWORDS_DIR = os.path.join(CORPORA_DIR, "stopwords")
-WORDNET_DIR = os.path.join(CORPORA_DIR, "wordnet", "wordnet")  # must point to extracted files
+WORDNET_DIR = os.path.join(CORPORA_DIR, "wordnet", "wordnet")  # extracted WordNet files here
 
 # --- Load Stopwords ---
 if not os.path.exists(STOPWORDS_DIR):
@@ -25,9 +26,10 @@ for file in os.listdir(STOPWORDS_DIR):
 if not os.path.exists(WORDNET_DIR):
     raise RuntimeError(f"WordNet folder not found at {WORDNET_DIR}")
 
-wn = WordNetCorpusReader(WORDNET_DIR, nltk.data.find('corpora/wordnet/wordnet/.*'))
+# Use WordNetCorpusReader directly
+wn = WordNetCorpusReader(WORDNET_DIR, r'.*')
 
-# Monkey patch NLTK lemmatizer to use local WordNet
+# Monkey-patch NLTK's WordNetLemmatizer to use local WordNet
 class LocalWordNetLemmatizer(WordNetLemmatizer):
     def __init__(self, wordnet_reader):
         super().__init__()
